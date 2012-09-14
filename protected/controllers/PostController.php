@@ -7,6 +7,8 @@ class PostController extends Controller
 	 * using two-column layout. See 'protected/views/layouts/column2.php'.
 	 */
 	public $layout='//layouts/column2';
+        
+        private $_model;
 
 	/**
 	 * @return array action filters
@@ -27,22 +29,14 @@ class PostController extends Controller
 	public function accessRules()
 	{
 		return array(
-			array('allow',  // allow all users to perform 'index' and 'view' actions
-				'actions'=>array('index','view'),
-				'users'=>array('*'),
-			),
-			array('allow', // allow authenticated user to perform 'create' and 'update' actions
-				'actions'=>array('create','update'),
-				'users'=>array('@'),
-			),
-			array('allow', // allow admin user to perform 'admin' and 'delete' actions
-				'actions'=>array('admin','delete'),
-				'users'=>array('admin'),
-			),
-			array('deny',  // deny all users
-				'users'=>array('*'),
-			),
-		);
+                    array('allow',
+                        'actions'   => array('index', 'view'),
+                        'users'     => array('*')),
+                    array('allow',
+                        'users'     => array('@')),
+                    array('deny', 
+                        'users' => array('*'))
+                );
 	}
 
 	/**
@@ -51,9 +45,10 @@ class PostController extends Controller
 	 */
 	public function actionView($id)
 	{
-		$this->render('view',array(
-			'model'=>$this->loadModel($id),
-		));
+		$post = $this->loadModel();
+                $this->render('view', array(
+                    'model' => $post
+                ));
 	}
 
 	/**
@@ -122,10 +117,26 @@ class PostController extends Controller
 	 */
 	public function actionIndex()
 	{
-		$dataProvider=new CActiveDataProvider('Post');
-		$this->render('index',array(
-			'dataProvider'=>$dataProvider,
-		));
+		$criteria  = new CDbCriteria(array(
+                    'condition' => 'status='.Post::STATUS_PUBLISHED,
+                    'order'     => 'update_time DESC',
+                    'with'      => 'commentCount'
+                ));
+                
+                if ( isset($_GET['tag'])) {
+                    $criteria->addSearchCondition('tags', $_GET['tag']);
+                }
+                
+                $dataProvider = new CActiveDataProvider('Post', array(
+                    'pagination'    => array(
+                        'pageSize'  => 5
+                    ),
+                    'criteria'      => $criteria
+                ));
+                
+                $this->render('index', array(
+                    'dataProvider'  => $dataProvider
+                )); 
 	}
 
 	/**
@@ -133,14 +144,13 @@ class PostController extends Controller
 	 */
 	public function actionAdmin()
 	{
-		$model=new Post('search');
-		$model->unsetAttributes();  // clear any default values
-		if(isset($_GET['Post']))
-			$model->attributes=$_GET['Post'];
-
-		$this->render('admin',array(
-			'model'=>$model,
-		));
+		$model = new Post('search');
+                if ( isset($_GET['Post'])) {
+                    $model->attributes = $_GET['Post'];
+                    $this->render('admin', array(
+                        'model' => $model
+                    ));
+                }
 	}
 
 	/**
@@ -148,12 +158,24 @@ class PostController extends Controller
 	 * If the data model is not found, an HTTP exception will be raised.
 	 * @param integer the ID of the model to be loaded
 	 */
-	public function loadModel($id)
+	public function loadModel()
 	{
-		$model=Post::model()->findByPk($id);
-		if($model===null)
-			throw new CHttpException(404,'The requested page does not exist.');
-		return $model;
+		if ( $this->_model === NULL) {
+                    if ( isset($_GET['id'])) {
+                        if (Yii::app()->user->isGuest) {
+                            $condition = 'status = '.Post::STATUS_PUBLISHED. ' OR status = '.Post::STATUS_ARCHIVED;
+                        } else {
+                            $condition = '';
+                        }
+                        
+                        $this->_model = Post::model()->findByPk($_GET['id'], $condition);
+                    }
+                    
+                    if ( $this->_model === null) {
+                        throw  new CHttpException(404,'The requested page could not be found');
+                    }
+                }
+                return $this->_model;
 	}
 
 	/**
